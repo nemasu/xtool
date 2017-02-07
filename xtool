@@ -60,9 +60,9 @@ unset SRC
 
 echo "Using Binutils version $binutils_ver"
 
-if [ -e /var/noop/installed/arm-linux-gnueabihf-binutils ] &&
-    [ "true" == `pkgr --jsonmeta arm-linux-gnueabihf-binutils | jq -r .installed` ] &&
-    [ "$binutils_ver" == `pkgr --jsonmeta arm-linux-gnueabihf-binutils | jq -r .version` ]; then
+if [ -e /var/noop/installed/${TARGET}-binutils ] &&
+    [ "true" == `pkgr --jsonmeta ${TARGET}-binutils | jq -r .installed` ] &&
+    [ "$binutils_ver" == `pkgr --jsonmeta ${TARGET}-binutils | jq -r .version` ]; then
 
         echo "Binutils for $TARGET version $binutils_ver is already installed, skipping...."
         let skip_binutils=1
@@ -94,9 +94,9 @@ fi
 
 
 echo "Using GCC version $gcc_ver"
-if [ -e /var/noop/installed/arm-linux-gnueabihf-gcc ] &&
-    [ "true" == `pkgr --jsonmeta arm-linux-gnueabihf-gcc | jq -r .installed` ] &&
-    [ "$gcc_ver" == `pkgr --jsonmeta arm-linux-gnueabihf-gcc | jq -r .version` ]; then
+if [ -e /var/noop/installed/${TARGET}-gcc ] &&
+    [ "true" == `pkgr --jsonmeta ${TARGET}-gcc | jq -r .installed` ] &&
+    [ "$gcc_ver" == `pkgr --jsonmeta ${TARGET}-gcc | jq -r .version` ]; then
 
         echo "GCC for $TARGET version $gcc_ver is already installed, skipping...."
         let skip_gcc=1
@@ -137,9 +137,9 @@ fi
 
 
 echo "Using Glibc version $glibc_ver"
-if [ -e /var/noop/installed/arm-linux-gnueabihf-glibc ] &&
-    [ "true" == `pkgr --jsonmeta arm-linux-gnueabihf-glibc | jq -r .installed` ] &&
-    [ "$glibc_ver" == `pkgr --jsonmeta arm-linux-gnueabihf-glibc | jq -r .version` ]; then
+if [ -e /var/noop/installed/${TARGET}-glibc ] &&
+    [ "true" == `pkgr --jsonmeta ${TARGET}-glibc | jq -r .installed` ] &&
+    [ "$glibc_ver" == `pkgr --jsonmeta ${TARGET}-glibc | jq -r .version` ]; then
 
         echo "Glibc Headers for $TARGET version $glibc_ver is already installed, skipping...."
         let skip_glibc=1
@@ -203,23 +203,22 @@ if [ "$skip_glibc" != 1 ]; then
     echo "Glibc done, pkg moved to /root/bldr-inst"
 fi
 
+set +e
 let gcc_threads=`${TARGET}-gcc -v 2>&1 | grep "enable-threads" | wc -l`
+set -e
 if [ $gcc_threads = 0 ]; then
     echo "Bulding GCC with threads and C++ support"
 
     rm -rf /root/xtool-inst/* 
 
     cd /root/xtool-tmp
-    if [ ! -e ./gcc-$gcc_ver ]; then
-        wget $gcc_src -Ogcc_src
-        tar xf gcc_src && rm gcc_src
-    fi
-
     cd gcc-$gcc_ver
-    mkdir -p build && cd build
+    rm -rf build && mkdir build
+    cd build
     ../configure --target=$TARGET --prefix=/usr \
         --libdir=/usr/lib --libexecdir=/usr/lib \
-        --disable-nls --enable-languages=c,c++ --without-headers \
+        --with-build-sysroot=/opt/cross/$TARGET/usr \
+        --disable-nls --enable-languages=c,c++ \
         --disable-shared --disable-multilib
     make -j${BLDR_CORES}
     make DESTDIR=/root/xtool-inst install
