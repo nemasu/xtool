@@ -10,22 +10,15 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
-if [ ! -e /usr/src/linux ]; then
-    echo "/usr/src/linux must point to linux kernel source directory"
-    exit 1
-fi
-
 let BLDR_CORES=`grep "processor" /proc/cpuinfo | wc -l`
 let BLDR_CORES=${BLDR_CORES}+1
 
 TARGET="$1"
 machine=`echo $TARGET | sed -e 's/\([0-9a-z]*\)-.*/\1/g'`
 
-mkdir -p /root/bldr-done
+mkdir -p /root/xtool-done
 rm -rf /root/xtool-inst && mkdir -p /root/xtool-inst    
 mkdir -p /root/xtool-tmp && cd /root/xtool-tmp
-
-echo  "Downloading binutils and GCC"
 
 source /var/noop/blds/binutils/binutils.bld
 binutils_ver=$DVERSION
@@ -57,6 +50,43 @@ unset VERSION
 unset DVERSION
 unset SRC
 
+if [ -e /var/noop/installed/${TARGET}-linux-headers ]; then
+
+        echo "linux-headers for $TARGET are already installed, skipping...."
+        let skip_headers=1
+fi
+
+if [ "$skip_headers" != 1 ]; then
+    cd /root/xtool-tmp
+
+    set +e
+    let kernel_src=`ls linux-* 2>/dev/null | wc -l`
+    set -e
+    
+    if [ $kernel_src = 0 ]; then
+        kernel_url=`curl -s -L https://www.kernel.org | egrep "linux-[0-9\.]+\.tar\.xz" | head -n1 | sed -e 's/\.tar\.xz.*/\.tar\.xz/g;s/.*a href="//g'`
+        kernel_ver=`echo $kernel_url | sed -e 's/.*linux-\([0-9\.]*\)\.tar\.xz.*/\1/g'`
+        wget "$kernel_url" -Olinux.src
+        tar xf linux.src && rm linux.src
+    else
+        kernel_ver=`ls | grep "linux-" | sed -e 's/linux-//g'`
+    fi
+        
+    pushd linux-*
+    echo "Trying to install headers for $machine"
+    make mrproper
+    make ARCH=$machine headers_check
+    make ARCH=$machine INSTALL_HDR_PATH=/root/xtool-inst/opt/cross/$TARGET/usr headers_install
+    
+    cd /root/xtool-inst
+    pkgr -genmeta ${TARGET}-linux-headers $kernel_ver
+    pkgr -genpkg
+    headers_pkg=`ls *.pkg`
+    echo "Installing headers..."
+    pkgr -f $headers_pkg
+    mv $headers_pkg /root/xtool-done
+    echo "linux-headers done, pkg moved to /root/xtool-done"
+fi
 
 echo "Using Binutils version $binutils_ver"
 
@@ -70,6 +100,8 @@ fi
 
 if [ "$skip_binutils" != 1 ]; then
 
+    rm -rf /root/xtool-inst/* 
+    cd /root/xtool-tmp
     if [ ! -e ./binutils-$binutils_ver ]; then
         wget $binutils_src -Obinutils_src
         tar xf binutils_src && rm binutils_src
@@ -77,7 +109,7 @@ if [ "$skip_binutils" != 1 ]; then
 
     cd binutils-$binutils_ver
     mkdir -p build && cd build
-    ../configure --target=$TARGET --prefix=/usr --with-sysroot --disable-nls --disable-werror --disable-multilib
+    ../configure --target=$TARGET --prefix=/usr --disable-nls --disable-werror --disable-multilib --with-sysroot
     make -j${BLDR_CORES}
     make DESTDIR=/root/xtool-inst install
 
@@ -87,8 +119,8 @@ if [ "$skip_binutils" != 1 ]; then
     binutils_pkg=`ls *.pkg`
     echo "Installing binutils..."
     pkgr -f $binutils_pkg
-    mv $binutils_pkg /root/bldr-done
-    echo "Binutils done, pkg moved to /root/bldr-inst"
+    mv $binutils_pkg /root/xtool-done
+    echo "Binutils done, pkg moved to /root/xtool-done"
 fi
 
 
@@ -126,13 +158,15 @@ if [ "$skip_gcc" != 1 ]; then
     make DESTDIR=/root/xtool-inst install-target-libgcc
 
     cd /root/xtool-inst
+    cp /var/noop/libdb /var/noop/libdb.xtool
     pkgr -genmeta ${TARGET}-gcc $gcc_ver
     pkgr -genpkg
+    mv /var/noop/libdb.xtool /var/noop/libdb
     gcc_pkg=`ls *.pkg`
     echo "Installing gcc..."
     pkgr -f $gcc_pkg
-    mv $gcc_pkg /root/bldr-done
-    echo "GCC done, pkg moved to /root/bldr-inst"
+    mv $gcc_pkg /root/xtool-done
+    echo "GCC done, pkg moved to /root/xtool-done"
 fi
 
 
@@ -154,30 +188,12 @@ if [ "$skip_glibc" != 1 ]; then
         tar xf glibc_src && rm glibc_src
     fi
     
-    set +e
-    let kernel_src=`ls linux-* 2>/dev/null | wc -l`
-    set -e
-    
-    if [ $kernel_src = 0 ]; then
-        kernel_url=`curl -s -L https://www.kernel.org | egrep "linux-[0-9\.]+\.tar\.xz" | head -n1 | sed -e 's/\.tar\.xz.*/\.tar\.xz/g;s/.*a href="//g'`
-        wget "$kernel_url" -Olinux.src
-        tar xf linux.src && rm linux.src
-    fi
-        
-    if [ ! -e /root/xtool-tmp/glibc-headers/usr/include/linux ]; then
-        pushd linux-*
-        echo "Trying to install headers for $machine"
-        make mrproper
-        make ARCH=$machine headers_check
-        make ARCH=$machine INSTALL_HDR_PATH=/root/xtool-tmp/glibc-headers/usr headers_install
-        popd
-    fi
     
     cd glibc-$glibc_ver
     mkdir -p build && cd build
    
     ../configure --host=$TARGET --prefix=/opt/cross/$TARGET \
-        --with-headers=/root/xtool-tmp/glibc-headers/usr/include \
+        --with-headers=/opt/cross/$TARGET/usr/include
         --includedir=/opt/cross/$TARGET/usr/include \
         --build=$MACHTYPE \
         --enable-kernel=2.6.32 \
@@ -187,21 +203,24 @@ if [ "$skip_glibc" != 1 ]; then
         libc_cv_c_cleanup=yes\
         --disable-profile
 
-    make cross_compiling=yes install_root=/root/xtool-tmp/glibc-headers install-bootstrap-headers=yes install-headers
+#    make cross_compiling=yes install_root=/root/xtool-tmp/glibc-headers install-bootstrap-headers=yes install-headers
     make -j${BLDR_CORES}
     make DESTDIR=/root/xtool-inst install
 
     cd /root/xtool-inst
     cp /var/noop/libdb /var/noop/libdb.xtool
+    find {bin,lib,sbin,lib32} -type f 2> /dev/null | xargs chmod 755 &> /dev/null
+    find {usr/bin,usr/lib,usr/sbin,usr/lib32} -type f 2> /dev/null | xargs chmod 755 &> /dev/null
     pkgr -genmeta ${TARGET}-glibc $glibc_ver
     pkgr -genpkg
     mv /var/noop/libdb.xtool /var/noop/libdb
     glibc_pkg=`ls *.pkg`
     echo "Installing glibc..."
     pkgr -f $glibc_pkg
-    mv $glibc_pkg /root/bldr-done
-    echo "Glibc done, pkg moved to /root/bldr-inst"
+    mv $glibc_pkg /root/xtool-done
+    echo "Glibc done, pkg moved to /root/xtool-done"
 fi
+
 
 set +e
 let gcc_threads=`${TARGET}-gcc -v 2>&1 | grep "enable-threads" | wc -l`
@@ -217,24 +236,24 @@ if [ $gcc_threads = 0 ]; then
     cd build
     ../configure --target=$TARGET --prefix=/usr \
         --libdir=/usr/lib --libexecdir=/usr/lib \
-        --with-build-sysroot=/opt/cross/$TARGET/usr \
+        --with-sysroot=/opt/cross/$TARGET \
         --disable-nls --enable-languages=c,c++ \
         --disable-shared --disable-multilib
     make -j${BLDR_CORES}
     make DESTDIR=/root/xtool-inst install
 
     cd /root/xtool-inst
+    cp /var/noop/libdb /var/noop/libdb.xtool
     pkgr -genmeta ${TARGET}-gcc $gcc_ver
     pkgr -genpkg
+    mv /var/noop/libdb.xtool /var/noop/libdb
     gcc_pkg=`ls *.pkg`
     echo "Replacing gcc..."
     pkgr -r ${TARGET}-gcc
     pkgr -f $gcc_pkg
-    mv $gcc_pkg /root/bldr-done
-    echo "GCC done, pkg moved to /root/bldr-inst"
+    mv $gcc_pkg /root/xtool-done
+    echo "GCC done, pkg moved to /root/xtool-done"
 fi
-
-#TODO package/install linux-headers too?
 
 echo "All Done"
 exit 0
