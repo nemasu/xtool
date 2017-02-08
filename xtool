@@ -193,7 +193,7 @@ if [ "$skip_glibc" != 1 ]; then
     mkdir -p build && cd build
    
     ../configure --host=$TARGET --prefix=/opt/cross/$TARGET \
-        --with-headers=/opt/cross/$TARGET/usr/include
+        --with-headers=/opt/cross/$TARGET/usr/include \
         --includedir=/opt/cross/$TARGET/usr/include \
         --build=$MACHTYPE \
         --enable-kernel=2.6.32 \
@@ -209,8 +209,10 @@ if [ "$skip_glibc" != 1 ]; then
 
     cd /root/xtool-inst
     cp /var/noop/libdb /var/noop/libdb.xtool
+    set +e
     find {bin,lib,sbin,lib32} -type f 2> /dev/null | xargs chmod 755 &> /dev/null
     find {usr/bin,usr/lib,usr/sbin,usr/lib32} -type f 2> /dev/null | xargs chmod 755 &> /dev/null
+    set -e
     pkgr -genmeta ${TARGET}-glibc $glibc_ver
     pkgr -genpkg
     mv /var/noop/libdb.xtool /var/noop/libdb
