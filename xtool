@@ -225,9 +225,9 @@ fi
 
 
 set +e
-let gcc_threads=`${TARGET}-gcc -v 2>&1 | grep "enable-threads" | wc -l`
+let gcc_threads_disabled=`${TARGET}-gcc -v 2>&1 | grep "disable-threads" | wc -l`
 set -e
-if [ $gcc_threads = 0 ]; then
+if [ $gcc_threads_disabled = 1 ]; then
     echo "Bulding GCC with threads and C++ support"
 
     rm -rf /root/xtool-inst/* 
