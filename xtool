@@ -192,9 +192,9 @@ if [ "$skip_glibc" != 1 ]; then
     cd glibc-$glibc_ver
     mkdir -p build && cd build
    
-    ../configure --host=$TARGET --prefix=/opt/cross/$TARGET \
+    ../configure --host=$TARGET --prefix=/ \
         --with-headers=/opt/cross/$TARGET/usr/include \
-        --includedir=/opt/cross/$TARGET/usr/include \
+        --includedir=/usr/include \
         --build=$MACHTYPE \
         --enable-kernel=2.6.32 \
         --enable-add-ons \
@@ -205,7 +205,7 @@ if [ "$skip_glibc" != 1 ]; then
 
 #    make cross_compiling=yes install_root=/root/xtool-tmp/glibc-headers install-bootstrap-headers=yes install-headers
     make -j${BLDR_CORES}
-    make DESTDIR=/root/xtool-inst install
+    make DESTDIR=/root/xtool-inst/opt/cross/$TARGET/ install
 
     cd /root/xtool-inst
     cp /var/noop/libdb /var/noop/libdb.xtool
