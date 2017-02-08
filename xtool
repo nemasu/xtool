@@ -109,7 +109,7 @@ if [ "$skip_binutils" != 1 ]; then
 
     cd binutils-$binutils_ver
     mkdir -p build && cd build
-    ../configure --target=$TARGET --prefix=/usr --disable-nls --disable-werror --disable-multilib --with-sysroot
+    ../configure --target=$TARGET --prefix=/usr --disable-nls --disable-werror --disable-multilib --with-sysroot $EXTRA_BINUTILS_OPTIONS
     make -j${BLDR_CORES}
     make DESTDIR=/root/xtool-inst install
 
@@ -150,7 +150,7 @@ if [ "$skip_gcc" != 1 ]; then
     ../configure --target=$TARGET --prefix=/usr \
         --libdir=/usr/lib --libexecdir=/usr/lib \
         --disable-nls --enable-languages=c --without-headers \
-        --disable-threads --enable-boostrap --disable-shared --disable-multilib
+        --disable-threads --enable-boostrap --disable-shared --disable-multilib $EXTRA_GCC_OPTIONS
 
     make -j${BLDR_CORES} all-gcc
     make -j${BLDR_CORES} all-target-libgcc
@@ -201,9 +201,9 @@ if [ "$skip_glibc" != 1 ]; then
         --disable-multilib \
         libc_cv_forced_unwind=yes \
         libc_cv_c_cleanup=yes\
-        --disable-profile
+        --disable-profile $EXTRA_GLIBC_OPTIONS
 
-#    make cross_compiling=yes install_root=/root/xtool-tmp/glibc-headers install-bootstrap-headers=yes install-headers
+#    make cross_compiling=yes install_root=/opt/cross/$TARGET/ install-bootstrap-headers=yes install-headers
     make -j${BLDR_CORES}
     make DESTDIR=/root/xtool-inst/opt/cross/$TARGET/ install
 
@@ -227,12 +227,17 @@ fi
 set +e
 let gcc_threads_disabled=`${TARGET}-gcc -v 2>&1 | grep "disable-threads" | wc -l`
 set -e
-if [ $gcc_threads_disabled = 1 ]; then
+if [ $gcc_threads_disabled = 1 ] || [ "$2" == "GCC" ]; then
     echo "Bulding GCC with threads and C++ support"
 
     rm -rf /root/xtool-inst/* 
 
     cd /root/xtool-tmp
+    if [ ! -e ./gcc-$gcc_ver ]; then
+        wget $gcc_src -Ogcc_src
+        tar xf gcc_src && rm gcc_src
+    fi
+
     cd gcc-$gcc_ver
     rm -rf build && mkdir build
     cd build
@@ -240,7 +245,7 @@ if [ $gcc_threads_disabled = 1 ]; then
         --libdir=/usr/lib --libexecdir=/usr/lib \
         --with-sysroot=/opt/cross/$TARGET \
         --disable-nls --enable-languages=c,c++ \
-        --disable-shared --disable-multilib
+        --disable-shared --disable-multilib $EXTRA_GCC_OPTIONS
     make -j${BLDR_CORES}
     make DESTDIR=/root/xtool-inst install
 
