@@ -14,7 +14,9 @@ let BLDR_CORES=`grep "processor" /proc/cpuinfo | wc -l`
 let BLDR_CORES=${BLDR_CORES}+1
 
 TARGET="$1"
-machine=`echo $TARGET | sed -e 's/\([0-9a-z]*\)-.*/\1/g'`
+if [ -z $machine ]; then
+    machine=`echo $TARGET | sed -e 's/\([0-9a-z]*\)-.*/\1/g'`
+fi
 
 mkdir -p /root/xtool-done
 rm -rf /root/xtool-inst && mkdir -p /root/xtool-inst    

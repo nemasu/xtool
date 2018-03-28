@@ -1,0 +1,2 @@
+RaspPi 3 B+
+machine=arch64 EXTRA_GCC_OPTIONS="--with-arch=armv8-a --with-cpu=cortex-a53" ./xtool aarch64-linux-gnueabihf
